@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { Star, ChevronRight, ArrowLeft } from 'lucide-react'
@@ -13,44 +14,42 @@ const ProductDetails = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const dispatch = useDispatch()
+  const queryClient = useQueryClient()
   const { isAuthenticated } = useSelector(state => state.auth)
-  const [product, setProduct] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [selectedSize, setSelectedSize] = useState('')
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [sizeError, setSizeError] = useState('')
+  const [activeProductId, setActiveProductId] = useState(id)
 
-  useEffect(() => {
-    let cancelled = false
+  if (id !== activeProductId) {
+    setActiveProductId(id)
+    setSelectedSize('')
+    setSizeError('')
+  }
 
-    const fetchProduct = async () => {
-      setLoading(true)
-      setProduct(null)
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ['product', id],
+    queryFn: async () => {
+      const response = await api.get(`/products/${id}`)
+      return response.data
+    },
+    enabled: Boolean(id),
+  })
 
-      try {
-        const response = await api.get(`/products/${id}`)
-        if (cancelled) return
-        setSelectedSize('')
-        setProduct(response.data)
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to fetch product:', error)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    if (id) {
-      fetchProduct()
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [id])
+  const addToCartMutation = useMutation({
+    mutationFn: async (payload) => {
+      await api.post('/cart', payload)
+    },
+    onSuccess: () => {
+      // Only refresh cart cache — product catalogs do not need refetching
+      queryClient.invalidateQueries({ queryKey: ['cart'] })
+    },
+  })
 
   const handleEscape = useCallback((event) => {
     if (event.key === 'Escape') {
@@ -60,7 +59,7 @@ const ProductDetails = () => {
 
   useWindowEvent('keydown', handleEscape)
 
-  const handleAddToCart = async() => {
+  const handleAddToCart = () => {
     if (!isAuthenticated) {
       setShowLoginModal(true)
       return
@@ -73,28 +72,17 @@ const ProductDetails = () => {
     
     setSizeError('')
     const productId = product._id || product.id
-    
-    dispatch(addToCart({
+    const payload = {
       product: productId,
       name: product.name,
       price: product.price,
       image: product.image,
       size: selectedSize,
       qty: 1
-    }))
-
-    try {
-      await api.post('/cart', {
-        product: productId,
-        name: product.name,
-        price: product.price,
-        image: product.image,
-        size: selectedSize,
-        qty: 1
-      })
-    } catch (error) {
-      console.error('Error adding to cart:', error)
     }
+
+    dispatch(addToCart(payload))
+    addToCartMutation.mutate(payload)
   }
 
   const renderStars = (rating) => {
@@ -108,13 +96,28 @@ const ProductDetails = () => {
     ))
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="product-details-page">
         <Navbar />
         <div className="loader-container">
           <div className="loader"></div>
           <p className="loader-text">Loading product...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="product-details-page">
+        <Navbar />
+        <div className="loader-container">
+          <p>Failed to load product</p>
+          <p style={{ color: '#666', marginTop: '0.5rem' }}>
+            {error?.message || 'Please try again later.'}
+          </p>
+          <Link to="/">Return to Home</Link>
         </div>
       </div>
     )
@@ -132,7 +135,7 @@ const ProductDetails = () => {
     )
   }
 
-  const availableSizes = product.size 
+  const availableSizes = product.size || []
 
   return (
     <div className="product-details-page">
@@ -225,8 +228,12 @@ const ProductDetails = () => {
               </div>
             )}
 
-            <button className="add-to-cart-button" onClick={handleAddToCart}>
-              ADD TO CART
+            <button
+              className="add-to-cart-button"
+              onClick={handleAddToCart}
+              disabled={addToCartMutation.isPending}
+            >
+              {addToCartMutation.isPending ? 'ADDING...' : 'ADD TO CART'}
             </button>
 
             {product.category && (

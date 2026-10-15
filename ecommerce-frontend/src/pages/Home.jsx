@@ -1,87 +1,68 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import useWindowEvent from '../hooks/useWindowEvent'
 import '../styles/Home.scss'
 import api from '../services/axios'
 
+const fetchProductsPage = async ({ pageParam, searchQuery, category }) => {
+  let url = `/products?pageNumber=${pageParam}`
+
+  if (searchQuery) {
+    url = `/products?search=${encodeURIComponent(searchQuery)}`
+  }
+
+  if (category) {
+    url += `&category=${encodeURIComponent(category.toLowerCase())}`
+  }
+
+  const response = await api.get(url)
+  const products = response.data.products || response.data
+
+  return {
+    products: Array.isArray(products) ? products : [],
+    page: pageParam,
+  }
+}
+
 const Home = () => {
   const navigate = useNavigate()
-  const [allProducts, setAllProducts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
   const location = useLocation()
   const [searchParams] = useSearchParams()
 
   const searchQuery = searchParams.get('search')
-
   const path = location.pathname.slice(1)
   const category = ['mens', 'womens', 'kids'].includes(path) ? path : null
 
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['products', { search: searchQuery, category }],
+    queryFn: ({ pageParam }) =>
+      fetchProductsPage({ pageParam, searchQuery, category }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      // Search results are a single page (matches previous load-more behavior)
+      if (searchQuery) return undefined
+      if (lastPage.products.length < 12) return undefined
+      return lastPage.page + 1
+    },
+  })
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true)
-        let url = '/products?pageNumber=1'
-        if (searchQuery) {
-          url = `/products?search=${encodeURIComponent(searchQuery)}`
-        }
-        if (category) {
-          url += `&category=${encodeURIComponent(category.toLowerCase())}`
-        }
+  const filteredProducts = data?.pages.flatMap((page) => page.products) ?? []
 
-        const response = await api.get(url)
-        const apiProducts = response.data.products || response.data
-        setAllProducts(apiProducts)
-        setCurrentPage(1)
-        setHasMore(apiProducts.length >= 12) 
-      } catch (error) {
-        console.error('Failed to fetch products:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchProducts()
-  }, [searchQuery, category])
-
-  const filteredProducts = allProducts
-
-  const handleLoadMore = useCallback(async () => {
-    if (searchQuery || loadingMore || !hasMore) {
-      return
-    }
-    
-    try {
-      setLoadingMore(true)
-      const nextPage = currentPage + 1
-      let url = `/products?pageNumber=${nextPage}`
-      
-      if (category) {
-        url += `&category=${encodeURIComponent(category.toLowerCase())}`
-      }
-      
-      const response = await api.get(url)
-      const newProducts = response.data.products || response.data
-      
-      if (newProducts.length > 0) {
-        setAllProducts(prevProducts => [...prevProducts, ...newProducts])
-        setCurrentPage(nextPage)
-        setHasMore(newProducts.length >= 12) 
-      } else {
-        setHasMore(false)
-      }
-    } catch (error) {
-      console.error('Failed to load more products:', error)
-      setHasMore(false)
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [currentPage, category, searchQuery, loadingMore, hasMore])
+  const handleLoadMore = useCallback(() => {
+    if (!hasNextPage || isFetchingNextPage) return
+    fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   const handleScroll = useCallback(() => {
     const totalPageHeight = document.documentElement.scrollHeight
@@ -103,7 +84,7 @@ const Home = () => {
     navigate(`/product/${productId}`)
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="home-page">
         <Navbar />
@@ -111,6 +92,21 @@ const Home = () => {
           <div className="loader"></div>
           <p className="loader-text">Loading products...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="home-page">
+        <Navbar />
+        <div className="loader-container">
+          <p>Failed to load products</p>
+          <p style={{ color: '#666', marginTop: '0.5rem' }}>
+            {error?.message || 'Please try again later.'}
+          </p>
+        </div>
+        <Footer />
       </div>
     )
   }
@@ -164,7 +160,7 @@ const Home = () => {
         </div>
 
         <div className="product-grid">
-          {filteredProducts.length === 0 && searchQuery ? (
+          {filteredProducts.length === 0 ? (
             <div style={{
               gridColumn: '1 / -1',
               textAlign: 'center',
@@ -172,7 +168,11 @@ const Home = () => {
               color: '#666'
             }}>
               <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>No products found</h3>
-              <p>Try searching with different keywords</p>
+              <p>
+                {searchQuery
+                  ? 'Try searching with different keywords'
+                  : 'There are no products to show right now.'}
+              </p>
             </div>
           ) : (
             filteredProducts.map((product) => {
@@ -212,7 +212,7 @@ const Home = () => {
           )}
         </div>
 
-        {loadingMore && (
+        {isFetchingNextPage && (
           <div style={{ 
             display: 'flex', 
             justifyContent: 'center', 
