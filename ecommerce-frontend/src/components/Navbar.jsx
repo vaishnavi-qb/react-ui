@@ -60,17 +60,19 @@ const Navbar = () => {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsLoggingOut(true)
-    
-    setTimeout(() => {
+
+    try {
+      await api.post('/users/logout')
+    } catch (error) {
+      console.error('Failed to log out:', error)
+    } finally {
       dispatch(logout())
       dispatch(clearCart())
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
       navigate('/')
       setIsLoggingOut(false)
-    }, 1000)
+    }
   }
 
   return (
