@@ -1,0 +1,44 @@
+name: Advance exercise
+
+on:
+  issues:
+    types:
+      - closed
+  workflow_run:
+    workflows:
+      - Validate exercise
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: advance-exercise-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  advance:
+    if: >-
+      (github.event_name == 'issues' && github.event.issue.state == 'closed') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Create the next eligible exercise issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: node .github/scripts/advance-exercise.mjs
