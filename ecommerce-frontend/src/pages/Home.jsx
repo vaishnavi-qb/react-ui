@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
+import useWindowEvent from '../hooks/useWindowEvent'
 import '../styles/Home.scss'
 import api from '../services/axios'
 
@@ -82,25 +83,20 @@ const Home = () => {
     }
   }, [currentPage, category, searchQuery, loadingMore, hasMore])
 
-  useEffect(() => {
-    const handleScroll = () => {
+  const handleScroll = useCallback(() => {
+    const totalPageHeight = document.documentElement.scrollHeight
+    const visibleViewportHeight = window.innerHeight
+    const currentScrollPosition = window.scrollY
 
-      const totalPageHeight = document.documentElement.scrollHeight
-      const visibleViewportHeight = window.innerHeight
-      const currentScrollPosition = window.scrollY
+    const thresholdBuffer = 100
+    const isNearBottom = (visibleViewportHeight + currentScrollPosition) >= (totalPageHeight - thresholdBuffer)
 
-      const thresholdBuffer = 100
-      const isNearBottom = (visibleViewportHeight + currentScrollPosition) >= (totalPageHeight - thresholdBuffer)
-
-      if (isNearBottom) {
-        handleLoadMore()
-      }
+    if (isNearBottom) {
+      handleLoadMore()
     }
+  }, [handleLoadMore])
 
-    window.addEventListener('scroll', handleScroll)
-
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [handleLoadMore, loading])
+  useWindowEvent('scroll', handleScroll)
 
   const handleProductClick = (product) => {
     const productId = product._id || product.id

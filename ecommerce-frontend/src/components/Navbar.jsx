@@ -17,10 +17,14 @@ const Navbar = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+
     const fetchCart = async () => {
       if (isAuthenticated) {
         try {
           const response = await api.get('/cart')
+          if (cancelled) return
+
           const cartItems = response.data.cartItems || []
           const totalAmount = response.data.itemsPrice || 0
           const totalQuantity = cartItems.reduce((acc, item) => acc + item.qty, 0)
@@ -33,12 +37,18 @@ const Navbar = () => {
 
           dispatch(setCart(dbCartData))
         } catch (error) {
-          console.error('Failed to fetch cart:', error)
+          if (!cancelled) {
+            console.error('Failed to fetch cart:', error)
+          }
         }
       }
     }
 
     fetchCart()
+
+    return () => {
+      cancelled = true
+    }
   }, [isAuthenticated, dispatch])
 
   const handleSearchSubmit = (e) => {
