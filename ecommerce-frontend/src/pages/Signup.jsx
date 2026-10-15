@@ -58,13 +58,7 @@ const Signup = () => {
 
       const userData = { id: data.id, name: data.name || name, email: data.email };
       
-      dispatch(loginSuccess({ 
-        user: userData, 
-        token: data.token 
-      }));
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(userData));
+      dispatch(loginSuccess({ user: userData }));
 
       const redirectToProductId = location.state?.redirectToProductId;
 

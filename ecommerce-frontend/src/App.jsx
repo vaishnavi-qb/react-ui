@@ -10,26 +10,37 @@ import Cart from './pages/Cart'
 import Checkout from './pages/Checkout'
 import OrderSuccess from './pages/OrderSuccess'
 import ProductDetails from './pages/ProductDetails'
+import api from './services/axios'
 
 function App() {
   const dispatch = useDispatch();
 
-  // Restore authentication state from localStorage on app initialization
+  // Restore session from HTTP-only jwt cookie via profile endpoint
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userDetails = localStorage.getItem('user');
-    
-    if (token && userDetails) {
-      try { 
-        const user = JSON.parse(userDetails);
-        dispatch(restoreAuth({ user, token }));
-      } catch (error) {
-        console.error('Failed to restore auth state:', error);
-        // Clear invalid data
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      try {
+        const { data } = await api.get('/users/profile');
+        if (cancelled) return;
+
+        dispatch(restoreAuth({
+          user: {
+            id: data._id,
+            name: data.name,
+            email: data.email,
+          },
+        }));
+      } catch {
+        // No valid cookie session — remain logged out
       }
-    }
+    };
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [dispatch]);
 
   return (

@@ -20,6 +20,15 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 const port = Number(process.env.PORT) || 3000;
 const host = "0.0.0.0";
 
+const clientOrigins = process.env.CLIENT_URL?.split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+if (!clientOrigins?.length) {
+  console.error("CLIENT_URL is required. Set it to your frontend origin (e.g. http://localhost:5173).");
+  process.exit(1);
+}
+
 if (!process.env.API_PUBLIC_URL?.trim()) {
   process.env.API_PUBLIC_URL =
     process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`;
@@ -27,13 +36,9 @@ if (!process.env.API_PUBLIC_URL?.trim()) {
 
 const app = express();
 
-const clientOrigins = process.env.CLIENT_URL?.split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
-
 app.use(
   cors({
-    origin: clientOrigins?.length ? clientOrigins : true,
+    origin: clientOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
