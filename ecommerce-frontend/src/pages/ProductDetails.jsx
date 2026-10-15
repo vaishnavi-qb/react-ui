@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
@@ -126,7 +126,7 @@ const ProductDetails = () => {
         <Navbar />
         <div className="loader-container">
           <p>Product not found</p>
-          <button onClick={() => navigate('/')}>Return to Home</button>
+          <Link to="/">Return to Home</Link>
         </div>
       </div>
     )

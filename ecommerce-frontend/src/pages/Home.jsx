@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import useWindowEvent from '../hooks/useWindowEvent'
@@ -14,8 +14,8 @@ const Home = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const location = useLocation()
+  const [searchParams] = useSearchParams()
 
-  const searchParams = new URLSearchParams(location.search)
   const searchQuery = searchParams.get('search')
 
   const path = location.pathname.slice(1)

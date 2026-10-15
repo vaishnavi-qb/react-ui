@@ -39,13 +39,20 @@ const Login = () => {
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(userData));
-      const redirectToProductId = location.state?.redirectToProductId;
 
-      if (redirectToProductId) {
+      const from = location.state?.from;
+      const redirectToProductId = location.state?.redirectToProductId;
+      const isSafePath = typeof from === 'string'
+        && from.startsWith('/')
+        && !from.startsWith('//');
+
+      if (isSafePath) {
+        navigate(from);
+      } else if (redirectToProductId) {
         navigate(`/product/${redirectToProductId}`);
       } else {
         navigate('/');
-      }      
+      }
     } catch (err) {
       console.log('Login error:', err)
       const message = err.response?.data?.message || 'Connection to server failed';
