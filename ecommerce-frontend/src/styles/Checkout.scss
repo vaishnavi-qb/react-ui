@@ -227,6 +227,11 @@
     }
     }
 
+    .field-error {
+      font-size: 0.8rem;
+      color: #c62828;
+    }
+
     input,
     select {
       padding: 0.75rem;
@@ -239,6 +244,10 @@
       &:focus {
         outline: none;
         border-color: #555;
+      }
+
+      &[aria-invalid='true'] {
+        border-color: #c62828;
       }
     }
 

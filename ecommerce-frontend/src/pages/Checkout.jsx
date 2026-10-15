@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useEffectEvent } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Plus, Trash2 } from 'lucide-react' 
@@ -7,6 +9,7 @@ import Footer from '../components/Footer'
 import '../styles/Checkout.scss'
 import api from '../services/axios'
 import { loadStripe } from '@stripe/stripe-js'
+import { checkoutSchema } from './checkoutSchema'
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
 
@@ -36,13 +39,28 @@ const Checkout = () => {
     const [savedAddresses, setSavedAddresses] = useState([])
     const [selectedAddressId, setSelectedAddressId] = useState('new')
     const [saveNewAddress, setSaveNewAddress] = useState(false)
-    const [formData, setFormData] = useState(initialFormState)
     const [isLoadingAddress, setIsLoadingAddress] = useState(isAuthenticated)
+
+    const {
+        register,
+        handleSubmit,
+        reset,
+        watch,
+        getValues,
+        formState: { errors, isSubmitting }
+    } = useForm({
+        resolver: zodResolver(checkoutSchema),
+        defaultValues: initialFormState
+    })
+
+    const shippingMethod = watch('shippingMethod')
+    const country = watch('country')
 
     const fetchSavedAddresses = useCallback(async () => {
         setIsLoadingAddress(true)
         try {
             const response = await api.get('/users/address')
+            const currentShipping = getValues('shippingMethod') || 'standard'
 
             const processedAddresses = Array.isArray(response.data?.address)
                 ? response.data.address.map(normalizeAddress)
@@ -54,21 +72,21 @@ const Checkout = () => {
 
                 setSavedAddresses(processedAddresses)
                 setSelectedAddressId(defaultAddr.id)
-                setFormData(prev => ({ ...defaultAddr, shippingMethod: prev.shippingMethod }))
+                reset({ ...defaultAddr, shippingMethod: currentShipping })
             } else {
                 setSavedAddresses([])
                 setSelectedAddressId('new')
-                setFormData(prev => ({ ...initialFormState, shippingMethod: prev.shippingMethod }))
+                reset({ ...initialFormState, shippingMethod: currentShipping })
             }
         } catch (error) {
             console.error('Failed to retrieve addresses profile:', error)
             setSavedAddresses([])
             setSelectedAddressId('new')
-            setFormData(prev => ({ ...initialFormState, shippingMethod: prev.shippingMethod }))
+            reset({ ...initialFormState, shippingMethod: getValues('shippingMethod') || 'standard' })
         } finally {
             setIsLoadingAddress(false)
         }
-    }, [selectedAddressId])
+    }, [selectedAddressId, reset, getValues])
 
     const loadSavedAddresses = useEffectEvent(() => {
         if (isAuthenticated) {
@@ -78,7 +96,7 @@ const Checkout = () => {
 
         setSavedAddresses([])
         setSelectedAddressId('new')
-        setFormData(initialFormState)
+        reset(initialFormState)
         setIsLoadingAddress(false)
     })
 
@@ -91,7 +109,7 @@ const Checkout = () => {
         express: 18.00
     }
 
-    const selectedShippingFee = shippingFees[formData.shippingMethod]
+    const selectedShippingFee = shippingFees[shippingMethod] ?? shippingFees.standard
     const taxRate = 0.075
     const subtotal = totalAmount
     const tax = subtotal * taxRate
@@ -110,25 +128,13 @@ const Checkout = () => {
     const handleAddressSelect = (id) => {
         setSelectedAddressId(id)
         if (id === 'new') {
-            setFormData({ ...initialFormState, shippingMethod: formData.shippingMethod })
+            reset({ ...initialFormState, shippingMethod })
         } else {
             const address = savedAddresses.find(addr => addr.id === id)
             if (address) {
-                setFormData({ ...address, shippingMethod: formData.shippingMethod })
+                reset({ ...address, shippingMethod })
             }
         }
-    }
-
-    const handleInputChange = (e) => {
-        const { name, value, type, checked } = e.target
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }))
-    }
-
-    const handleShippingMethodChange = (method) => {
-        setFormData(prev => ({ ...prev, shippingMethod: method }))
     }
 
     const handleDeleteAddress = async (e, id) => {
@@ -139,7 +145,7 @@ const Checkout = () => {
             
             if (selectedAddressId === id) {
                 setSelectedAddressId('new')
-                setFormData(initialFormState)
+                reset(initialFormState)
             }
             
             await fetchSavedAddresses()
@@ -148,9 +154,7 @@ const Checkout = () => {
         }
     }
 
-    const handleProceedToPayment = async (e) => {
-        e.preventDefault()
-
+    const onSubmit = async (formData) => {
         if (!isAuthenticated) {
             navigate('/login')
             return
@@ -209,6 +213,8 @@ const Checkout = () => {
         )
     }
 
+    const isFormLocked = selectedAddressId !== 'new'
+
     return (
         <div className="checkout-page">
             <Navbar />
@@ -261,129 +267,168 @@ const Checkout = () => {
 
                         <h2>{selectedAddressId === 'new' ? 'Add New Shipping Information' : 'Shipping Information'}</h2>
 
-                        <form id="checkout-form" onSubmit={handleProceedToPayment}>
+                        <form id="checkout-form" onSubmit={handleSubmit(onSubmit)} noValidate>
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label>First Name <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="firstName">First Name <span className="required-star" aria-hidden="true">*</span></label>
                                     <input
+                                        id="firstName"
                                         type="text"
-                                        name="firstName"
-                                        value={formData.firstName}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
-                                        minLength={3}
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.firstName ? 'true' : 'false'}
+                                        aria-describedby={errors.firstName ? 'firstName-error' : undefined}
+                                        {...register('firstName')}
                                     />
+                                    {errors.firstName && (
+                                        <span id="firstName-error" className="field-error" role="alert">
+                                            {errors.firstName.message}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="form-group">
-                                    <label>Last Name <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="lastName">Last Name <span className="required-star" aria-hidden="true">*</span></label>
                                     <input
+                                        id="lastName"
                                         type="text"
-                                        name="lastName"
-                                        value={formData.lastName}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
-                                        minLength={3}
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.lastName ? 'true' : 'false'}
+                                        aria-describedby={errors.lastName ? 'lastName-error' : undefined}
+                                        {...register('lastName')}
                                     />
+                                    {errors.lastName && (
+                                        <span id="lastName-error" className="field-error" role="alert">
+                                            {errors.lastName.message}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="form-group">
-                                <label>Email Address <span className="required-star" aria-hidden="true">*</span></label>
+                                <label htmlFor="email">Email Address <span className="required-star" aria-hidden="true">*</span></label>
                                 <input
+                                    id="email"
                                     type="email"
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleInputChange}
-                                    required
-                                    disabled={selectedAddressId !== 'new'}
+                                    disabled={isFormLocked}
+                                    aria-invalid={errors.email ? 'true' : 'false'}
+                                    aria-describedby={errors.email ? 'email-error' : undefined}
+                                    {...register('email')}
                                 />
+                                {errors.email && (
+                                    <span id="email-error" className="field-error" role="alert">
+                                        {errors.email.message}
+                                    </span>
+                                )}
                             </div>
 
                             <div className="form-group">
-                                <label>Shipping Address <span className="required-star" aria-hidden="true">*</span></label>
+                                <label htmlFor="shippingAddress">Shipping Address <span className="required-star" aria-hidden="true">*</span></label>
                                 <input
+                                    id="shippingAddress"
                                     type="text"
-                                    name="shippingAddress"
-                                    value={formData.shippingAddress}
-                                    onChange={handleInputChange}
-                                    required
-                                    disabled={selectedAddressId !== 'new'}
+                                    disabled={isFormLocked}
+                                    aria-invalid={errors.shippingAddress ? 'true' : 'false'}
+                                    aria-describedby={errors.shippingAddress ? 'shippingAddress-error' : undefined}
+                                    {...register('shippingAddress')}
                                 />
+                                {errors.shippingAddress && (
+                                    <span id="shippingAddress-error" className="field-error" role="alert">
+                                        {errors.shippingAddress.message}
+                                    </span>
+                                )}
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label>City <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="city">City <span className="required-star" aria-hidden="true">*</span></label>
                                     <input
+                                        id="city"
                                         type="text"
-                                        name="city"
-                                        value={formData.city}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.city ? 'true' : 'false'}
+                                        aria-describedby={errors.city ? 'city-error' : undefined}
+                                        {...register('city')}
                                     />
+                                    {errors.city && (
+                                        <span id="city-error" className="field-error" role="alert">
+                                            {errors.city.message}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="form-group">
-                                    <label>ZIP/Postal Code <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="zipCode">ZIP/Postal Code <span className="required-star" aria-hidden="true">*</span></label>
                                     <input
+                                        id="zipCode"
                                         type="text"
-                                        name="zipCode"
-                                        value={formData.zipCode}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
-                                        pattern="[0-9a-zA-Z]{5,10}"
-                                        title="Please enter a valid postal code (5 to 10 alphanumeric characters)"
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.zipCode ? 'true' : 'false'}
+                                        aria-describedby={errors.zipCode ? 'zipCode-error' : undefined}
+                                        {...register('zipCode')}
                                     />
+                                    {errors.zipCode && (
+                                        <span id="zipCode-error" className="field-error" role="alert">
+                                            {errors.zipCode.message}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="form-row">
                                 <div className="form-group">
-                                    <label>Country <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="country">Country <span className="required-star" aria-hidden="true">*</span></label>
                                     <select
-                                        name="country"
-                                        value={formData.country}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
+                                        id="country"
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.country ? 'true' : 'false'}
+                                        aria-describedby={errors.country ? 'country-error' : undefined}
+                                        {...register('country')}
                                     >
                                         <option value="India">India</option>
                                     </select>
+                                    {errors.country && (
+                                        <span id="country-error" className="field-error" role="alert">
+                                            {errors.country.message}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="form-group">
-                                    <label>State <span className="required-star" aria-hidden="true">*</span></label>
+                                    <label htmlFor="state">State <span className="required-star" aria-hidden="true">*</span></label>
                                     <select
-                                        name="state"
-                                        value={formData.state}
-                                        onChange={handleInputChange}
-                                        required
-                                        disabled={selectedAddressId !== 'new'}
+                                        id="state"
+                                        disabled={isFormLocked}
+                                        aria-invalid={errors.state ? 'true' : 'false'}
+                                        aria-describedby={errors.state ? 'state-error' : undefined}
+                                        {...register('state')}
                                     >
                                         <option value="">Select State</option>
-                                        {regionsByCountry[formData.country].map((region) => (
+                                        {(regionsByCountry[country] || []).map((region) => (
                                             <option key={region} value={region}>
                                                 {region}
                                             </option>
                                         ))}
                                     </select>
+                                    {errors.state && (
+                                        <span id="state-error" className="field-error" role="alert">
+                                            {errors.state.message}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="form-group">
-                                <label>Phone Number <span className="required-star" aria-hidden="true">*</span></label>
+                                <label htmlFor="phoneNumber">Phone Number <span className="required-star" aria-hidden="true">*</span></label>
                                 <input
+                                    id="phoneNumber"
                                     type="tel"
-                                    name="phoneNumber"
-                                    value={formData.phoneNumber}
-                                    onChange={handleInputChange}
-                                    required
-                                    disabled={selectedAddressId !== 'new'}
-                                    pattern="[0-9]{7,15}"
-                                    title="Please enter a valid phone number containing 7 to 15 digits without spaces."
+                                    disabled={isFormLocked}
+                                    aria-invalid={errors.phoneNumber ? 'true' : 'false'}
+                                    aria-describedby={errors.phoneNumber ? 'phoneNumber-error' : undefined}
+                                    {...register('phoneNumber')}
                                 />
+                                {errors.phoneNumber && (
+                                    <span id="phoneNumber-error" className="field-error" role="alert">
+                                        {errors.phoneNumber.message}
+                                    </span>
+                                )}
                             </div>
 
                             {selectedAddressId === 'new' && savedAddresses.length < 3 && (
@@ -411,24 +456,25 @@ const Checkout = () => {
                                     <label className="shipping-option">
                                         <input
                                             type="radio"
-                                            name="shippingMethod"
                                             value="standard"
-                                            checked={formData.shippingMethod === 'standard'}
-                                            onChange={() => handleShippingMethodChange('standard')}
+                                            {...register('shippingMethod')}
                                         />
                                         <span>Standard (3-5 days) - $8.00</span>
                                     </label>
                                     <label className="shipping-option">
                                         <input
                                             type="radio"
-                                            name="shippingMethod"
                                             value="express"
-                                            checked={formData.shippingMethod === 'express'}
-                                            onChange={() => handleShippingMethodChange('express')}
+                                            {...register('shippingMethod')}
                                         />
                                         <span>Express (1-2 days) - $18.00</span>
                                     </label>
                                 </div>
+                                {errors.shippingMethod && (
+                                    <span id="shippingMethod-error" className="field-error" role="alert">
+                                        {errors.shippingMethod.message}
+                                    </span>
+                                )}
                             </div>
                         </form>
                     </div>
@@ -474,11 +520,11 @@ const Checkout = () => {
 
                             <div className="total-row">
                                 <span>Shipping:</span>
-                                <span>${selectedShippingFee.toFixed(2)} ({formData.shippingMethod === 'standard' ? 'Standard' : 'Express'})</span>
+                                <span>${selectedShippingFee.toFixed(2)} ({shippingMethod === 'standard' ? 'Standard' : 'Express'})</span>
                             </div>
 
                             <div className="total-row">
-                                <span>{`Tax ${formData.country === 'UAE' ? '(VAT)' : '(GST)'}:`}</span>
+                                <span>{`Tax ${country === 'UAE' ? '(VAT)' : '(GST)'}:`}</span>
                                 <span>${tax.toFixed(2)}</span>
                             </div>
 
@@ -492,9 +538,11 @@ const Checkout = () => {
                             type='submit'
                             className="payment-btn"
                             form='checkout-form'
+                            disabled={isSubmitting}
+                            aria-busy={isSubmitting}
                         >
                             <Lock size={18} />
-                            PROCEED TO PAYMENT
+                            {isSubmitting ? 'PROCESSING...' : 'PROCEED TO PAYMENT'}
                         </button>
                     </div>
                 </div>
