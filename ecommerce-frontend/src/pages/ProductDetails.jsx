@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import Navbar from '../components/Navbar'
@@ -6,6 +6,7 @@ import Footer from '../components/Footer'
 import { Star, ChevronRight, ArrowLeft } from 'lucide-react'
 import { addToCart } from '../store/cartSlice'
 import api from '../services/axios'
+import useWindowEvent from '../hooks/useWindowEvent'
 import '../styles/ProductDetails.scss'
 
 const ProductDetails = () => {
@@ -20,23 +21,44 @@ const ProductDetails = () => {
   const [sizeError, setSizeError] = useState('')
 
   useEffect(() => {
+    let cancelled = false
+
     const fetchProduct = async () => {
+      setLoading(true)
+      setProduct(null)
+
       try {
-        setLoading(true)
         const response = await api.get(`/products/${id}`)
+        if (cancelled) return
         setSelectedSize('')
         setProduct(response.data)
       } catch (error) {
-        console.error('Failed to fetch product:', error)
+        if (!cancelled) {
+          console.error('Failed to fetch product:', error)
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
     if (id) {
       fetchProduct()
     }
+
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  const handleEscape = useCallback((event) => {
+    if (event.key === 'Escape') {
+      setShowLoginModal(false)
+    }
+  }, [])
+
+  useWindowEvent('keydown', handleEscape)
 
   const handleAddToCart = async() => {
     if (!isAuthenticated) {
